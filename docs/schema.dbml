@@ -1,0 +1,55 @@
+// Star Schema — sales-data-warehouse
+// Paste this into https://dbdiagram.io to render and export.
+
+Table dim_date {
+date_key integer [pk, note: 'YYYYMMDD']
+full_date date [unique, not null]
+year smallint [not null]
+quarter smallint [not null]
+month smallint [not null]
+month_name varchar [not null]
+day smallint [not null]
+day_of_week smallint [not null, note: '0=Sun..6=Sat']
+is_weekend boolean [not null]
+}
+
+Table dim_customer {
+customer_key bigserial [pk]
+customer_id integer [unique, not null]
+name varchar [not null]
+city varchar
+valid_from timestamp [not null]
+valid_to timestamp [not null, default: '9999-12-31']
+is_current boolean [not null, default: true]
+}
+
+Table dim_product {
+product_key bigserial [pk]
+product_id integer [unique, not null]
+product_name varchar [not null]
+category varchar [not null]
+unit_cost numeric(10,2) [not null]
+}
+
+Table dim_branch {
+branch_key bigserial [pk]
+branch_id varchar [unique, not null, note: 'cleaned: trim + lower']
+branch_name varchar [not null]
+city varchar
+}
+
+Table fact_sales {
+sales_key bigserial [pk]
+order_id integer [not null, note: 'degenerate dimension']
+date_key integer [not null, ref: > dim_date.date_key]
+customer_key bigint [not null, ref: > dim_customer.customer_key]
+product_key bigint [not null, ref: > dim_product.product_key]
+branch_key bigint [not null, ref: > dim_branch.branch_key]
+quantity integer [not null]
+unit_price numeric(10,2) [not null]
+discount numeric(5,4) [not null]
+gross_amount numeric(12,2) [not null]
+net_amount numeric(12,2) [not null]
+cost_amount numeric(12,2) [not null]
+profit_amount numeric(12,2) [not null]
+}s
