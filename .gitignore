@@ -1,0 +1,25 @@
+# Data files (synthetic source data — regenerate with scripts/generate_data.py)
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment / secrets
+.env
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Local database dumps
+*.dump
+*.sql.gz
