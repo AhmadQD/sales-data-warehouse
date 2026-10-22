@@ -23,3 +23,5 @@ Thumbs.db
 # Local database dumps
 *.dump
 *.sql.gz
+
+backups/    
