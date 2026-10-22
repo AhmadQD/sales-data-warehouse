@@ -250,6 +250,35 @@ def main():
     print(f"  discount defaulted to 0     : {stats['normalized_discount']}")
     print(f"  customer_id nulled          : {stats['nulled_customer_id']}")
 
+    # Persist stats to staging.etl_stats (single source of truth for reports)
+    conn2 = get_connection()
+    try:
+        with conn2.cursor() as cur:
+            cur.execute("DELETE FROM staging.etl_stats WHERE source_table = 'raw.sales_raw'")
+            metrics = [
+                ("read", stats["read"]),
+                ("kept", stats["kept"]),
+                ("rejected_negative_quantity", stats["rejected_negative_quantity"]),
+                ("rejected_bad_date", stats["rejected_bad_date"]),
+                ("rejected_other", stats["rejected_other"]),
+                ("duplicates_removed", stats["duplicates_removed"]),
+                ("normalized_branch_id", stats["normalized_branch_id"]),
+                ("normalized_date", stats["normalized_date"]),
+                ("normalized_discount", stats["normalized_discount"]),
+                ("nulled_customer_id", stats["nulled_customer_id"]),
+            ]
+            for metric, value in metrics:
+                cur.execute(
+                    """
+                    INSERT INTO staging.etl_stats (source_table, metric, value)
+                    VALUES ('raw.sales_raw', %s, %s)
+                    """,
+                    (metric, value),
+                )
+        conn2.commit()
+    finally:
+        conn2.close()
+
     expected_kept = 101000 - 500 - 1000  # raw - neg - dup
     print()
     if stats["kept"] == expected_kept:
