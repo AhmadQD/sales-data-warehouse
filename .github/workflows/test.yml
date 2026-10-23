@@ -48,11 +48,12 @@ jobs:
           DB_PASSWORD=postgres
           ENVEOF
 
-      - name: Create database and schemas
+      - name: Create database, roles, and schemas
         env:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -f scripts/db/01_create_database.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/02_roles_and_grants.sql
           psql -h localhost -U postgres -d sales_dw -f scripts/db/04_create_raw_tables.sql
           psql -h localhost -U postgres -d sales_dw -f scripts/db/05_create_staging_tables.sql
           psql -h localhost -U postgres -d sales_dw -f scripts/db/07_create_dim_date.sql
