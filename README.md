@@ -1,5 +1,10 @@
 # sales-data-warehouse
 
+
+[![ETL Pipeline Tests](https://github.com/AhmadQD/sales-data-warehouse/actions/workflows/test.yml/badge.svg)](https://github.com/AhmadQD/sales-data-warehouse/actions/workflows/test.yml)
+
+
+
 A production-style **PostgreSQL data warehouse** with a layered ETL pipeline.
 
 > All source data is **synthetic** (generated with `SEED=42`).
