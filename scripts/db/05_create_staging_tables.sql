@@ -40,15 +40,14 @@ CREATE TABLE staging.branches_clean (
 --    customer_id is nullable (missing_customer_id stays, mapped later to Unknown).
 --    discount defaults to 0 when missing.
 CREATE TABLE staging.sales_clean (
-    order_id     INTEGER      NOT NULL,
-    order_date   DATE         NOT NULL,
-    branch_id    TEXT         NOT NULL,
-    customer_id  INTEGER      NULL,
-    product_id   INTEGER      NOT NULL,
-    quantity     INTEGER      NOT NULL CHECK (quantity > 0),
+    order_id     TEXT          PRIMARY KEY,
+    order_date   DATE          NOT NULL,
+    branch_id    TEXT          NOT NULL,
+    customer_id  TEXT          NULL,
+    product_id   TEXT          NOT NULL,
+    quantity     INTEGER       NOT NULL CHECK (quantity > 0),
     unit_price   NUMERIC(10,2) NOT NULL CHECK (unit_price >= 0),
-    discount     NUMERIC(5,4)  NOT NULL DEFAULT 0 CHECK (discount >= 0 AND discount <= 1),
-    PRIMARY KEY (order_id)   -- assumes one line per order in this dataset
+    discount     NUMERIC(5,4)  NOT NULL DEFAULT 0 CHECK (discount >= 0 AND discount <= 1)
 );
 
 CREATE INDEX idx_sales_clean_date     ON staging.sales_clean(order_date);
