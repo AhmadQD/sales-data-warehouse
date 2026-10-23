@@ -40,29 +40,24 @@ jobs:
 
       - name: Create .env for CI
         run: |
-          cat > .env << 'ENVEOF'
-          DB_HOST=localhost
-          DB_PORT=5432
-          DB_NAME=sales_dw
-          DB_USER=postgres
-          DB_PASSWORD=postgres
-          ENVEOF
+          printf 'DB_HOST=localhost\nDB_PORT=5432\nDB_NAME=sales_dw\nDB_USER=postgres\nDB_PASSWORD=postgres\n' > .env
 
       - name: Create database, roles, and schemas
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h localhost -U postgres -f scripts/db/01_create_database.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/02_roles_and_grants.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/04_create_raw_tables.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/05_create_staging_tables.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/07_create_dim_date.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/08_create_warehouse_dims.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/09_create_fact_sales.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/11_create_watermark.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/13_create_views.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/14_create_views.sql
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/15_fix_etl_quality_view.sql
+          set -e
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f scripts/db/01_create_database.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/02_roles_and_grants.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/04_create_raw_tables.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/05_create_staging_tables.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/07_create_dim_date.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/08_create_warehouse_dims.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/09_create_fact_sales.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/11_create_watermark.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/13_create_views.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/14_create_views.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/15_fix_etl_quality_view.sql
 
       - name: Generate synthetic data
         run: python scripts/generate_data.py
@@ -89,7 +84,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h localhost -U postgres -d sales_dw -f scripts/db/12_master_test_runner.sql
+          psql -h localhost -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/12_master_test_runner.sql
 
       - name: ETL quality report
         run: python scripts/etl/quality_report.py
