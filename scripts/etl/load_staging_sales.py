@@ -2,22 +2,14 @@
 Clean and load raw.sales_raw into staging.sales_clean (incremental).
 
 Incremental strategy:
-  * We read warehouse.etl_watermark WHERE pipeline_name='staging_sales'.
+  * Read watermark WHERE pipeline_name='staging_sales'.
   * Only rows with order_id > last_loaded_key are processed.
-  * New rows are inserted; existing rows are skipped (ON CONFLICT DO NOTHING).
-  * The watermark is updated in the SAME transaction as the inserts.
-  * Rejected rows are always logged (they never enter sales_clean).
+  * ON CONFLICT DO NOTHING (order_id is PK).
+  * Watermark updated in the SAME transaction as inserts.
 
-On first run (watermark NULL), ALL rows are processed.
-
-Cleaning rules (documented in docs/etl_decisions.md):
-  1. order_date: accepts 'YYYY-MM-DD' and 'DD/MM/YYYY' -> DATE.
-  2. branch_id:  LOWER(TRIM(...)).
-  3. customer_id: empty -> NULL.
-  4. product_id: TEXT (e.g. "P089").
-  5. quantity <= 0: REJECTED (ambiguous).
-  6. discount: empty -> 0.
-  7. duplicates: identical business tuples are deduplicated.
+Audit:
+  * Every run is appended to staging.etl_runs (never deleted).
+  * vw_etl_quality reads the LATEST run per pipeline.
 
 Run from repository root:
     python scripts/etl/load_staging_sales.py
@@ -91,6 +83,28 @@ def update_watermark(cur, pipeline, last_key, last_date, rows_last_run):
     )
 
 
+def log_run(cur, stats):
+    """Append a row to staging.etl_runs (historical, never deleted)."""
+    cur.execute(
+        """
+        INSERT INTO staging.etl_runs
+            (pipeline_name, rows_read, rows_kept,
+             rejected_negative_quantity, rejected_bad_date, rejected_other,
+             duplicates_removed,
+             normalized_branch_id, normalized_date, normalized_discount,
+             nulled_customer_id)
+        VALUES ('staging_sales', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            stats["read"], stats["kept"],
+            stats["rejected_negative_quantity"], stats["rejected_bad_date"],
+            stats["rejected_other"], stats["duplicates_removed"],
+            stats["normalized_branch_id"], stats["normalized_date"],
+            stats["normalized_discount"], stats["nulled_customer_id"],
+        ),
+    )
+
+
 def clean_sales(conn):
     stats = {
         "read": 0,
@@ -99,7 +113,6 @@ def clean_sales(conn):
         "rejected_bad_date": 0,
         "rejected_other": 0,
         "duplicates_removed": 0,
-        "skipped_existing": 0,
         "normalized_branch_id": 0,
         "normalized_date": 0,
         "normalized_discount": 0,
@@ -113,7 +126,6 @@ def clean_sales(conn):
         stats["watermark_before"] = wm
 
         if wm is None:
-            # First run: process everything
             cur.execute("""
                 SELECT _row_id, order_id, order_date, branch_id, customer_id,
                        product_id, quantity, unit_price, discount
@@ -133,6 +145,7 @@ def clean_sales(conn):
         stats["read"] = len(rows)
 
         to_insert = []
+        seen = set()
         max_order_id = wm
         max_date = None
 
@@ -219,6 +232,14 @@ def clean_sales(conn):
                     stats["rejected_other"] += 1
                     continue
 
+            # In-run dedup (only relevant for first backfill)
+            key = (order_id_s, date_obj, branch_id_s, customer_id_val,
+                   product_id_s, qty, round(price, 2), round(disc, 4))
+            if key in seen:
+                stats["duplicates_removed"] += 1
+                continue
+            seen.add(key)
+
             to_insert.append((
                 order_id_s, date_obj, branch_id_s, customer_id_val,
                 product_id_s, qty, round(price, 2), round(disc, 4),
@@ -229,7 +250,6 @@ def clean_sales(conn):
             if max_date is None or date_obj > max_date:
                 max_date = date_obj
 
-        # Insert new rows only (ON CONFLICT skips existing order_id)
         if to_insert:
             execute_values(
                 cur,
@@ -242,22 +262,13 @@ def clean_sales(conn):
                 """,
                 to_insert,
             )
-            cur.execute("SELECT COUNT(*) FROM staging.sales_clean")
-            # rows_actually_inserted is computed below via rowcount diff
-        # Count how many were actually inserted
-        rows_before = len(to_insert)
-        # Use RETURNING-less count: check how many of these order_ids exist now
-        if to_insert:
             order_ids = [r[0] for r in to_insert]
             cur.execute(
                 "SELECT COUNT(*) FROM staging.sales_clean WHERE order_id = ANY(%s)",
                 (order_ids,),
             )
             present = cur.fetchone()[0]
-            # We can't easily distinguish "was already there" vs "just inserted".
-            # Conservative: assume all present were inserted now (dups handled below).
             stats["kept"] = present
-            stats["skipped_existing"] = rows_before - present
         else:
             stats["kept"] = 0
 
@@ -268,24 +279,8 @@ def clean_sales(conn):
         else:
             stats["watermark_after"] = wm
 
-        # Persist stats
-        cur.execute("DELETE FROM staging.etl_stats WHERE source_table = 'raw.sales_raw'")
-        metrics = [
-            ("read", stats["read"]),
-            ("kept", stats["kept"]),
-            ("rejected_negative_quantity", stats["rejected_negative_quantity"]),
-            ("rejected_bad_date", stats["rejected_bad_date"]),
-            ("rejected_other", stats["rejected_other"]),
-            ("normalized_branch_id", stats["normalized_branch_id"]),
-            ("normalized_date", stats["normalized_date"]),
-            ("normalized_discount", stats["normalized_discount"]),
-            ("nulled_customer_id", stats["nulled_customer_id"]),
-        ]
-        for metric, value in metrics:
-            cur.execute(
-                "INSERT INTO staging.etl_stats (source_table, metric, value) VALUES ('raw.sales_raw', %s, %s)",
-                (metric, value),
-            )
+        # Append to audit log
+        log_run(cur, stats)
 
         conn.commit()
 
@@ -307,6 +302,10 @@ def main():
     print(f"  rejected (negative qty)     : {stats['rejected_negative_quantity']}")
     print(f"  rejected (bad date)         : {stats['rejected_bad_date']}")
     print(f"  rejected (other)            : {stats['rejected_other']}")
+    print(f"  duplicates removed          : {stats['duplicates_removed']}")
+    print(f"  normalized (branch/date/disc): "
+          f"{stats['normalized_branch_id']}/{stats['normalized_date']}/{stats['normalized_discount']}")
+    print(f"  nulled customer_id          : {stats['nulled_customer_id']}")
 
 
 if __name__ == "__main__":
