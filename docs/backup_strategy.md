@@ -1,5 +1,29 @@
 # Backup Strategy — sales-data-warehouse
 
+
+
+## Restore Test — 2026-10-23
+
+A full restore was performed to validate the backup:
+
+1. Created `sales_dw_restore_test` database.
+2. `pg_restore --clean --if-exists` from `backups/sales_dw_2026-10-23_00-03-57.dump`.
+3. Applied roles from `backups/roles_2026-10-23_00-03-57.sql`.
+4. Ran `scripts/db/12_master_test_runner.sql`.
+
+**Result: 18/18 tests PASS.** The dump contains 99,570 rows in
+`fact_sales` (matches source at backup time). The restored database
+is indistinguishable from the original in behavior.
+
+Note: `role already exists` warnings during role restore are expected
+when restoring into the same PostgreSQL cluster (roles are cluster-level,
+not database-level). For a true disaster-recovery drill, restore on a
+fresh cluster.
+
+
+
+
+
 ## Current Implementation
 
 | Aspect | Value |

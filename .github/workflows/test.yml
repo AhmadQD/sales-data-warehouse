@@ -1,0 +1,94 @@
+name: ETL Pipeline Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install psycopg2-binary pandas openpyxl python-dotenv
+
+      - name: Create .env for CI
+        run: |
+          cat > .env << 'ENVEOF'
+          DB_HOST=localhost
+          DB_PORT=5432
+          DB_NAME=sales_dw
+          DB_USER=postgres
+          DB_PASSWORD=postgres
+          ENVEOF
+
+      - name: Create database and schemas
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -f scripts/db/01_create_database.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/04_create_raw_tables.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/05_create_staging_tables.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/07_create_dim_date.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/08_create_warehouse_dims.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/09_create_fact_sales.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/11_create_watermark.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/13_create_views.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/14_create_views.sql
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/15_fix_etl_quality_view.sql
+
+      - name: Generate synthetic data
+        run: python scripts/generate_data.py
+
+      - name: Load raw layer
+        run: python scripts/etl/load_raw.py
+
+      - name: Load staging (dims)
+        run: python scripts/etl/load_staging_dims.py
+
+      - name: Load staging (sales)
+        run: python scripts/etl/load_staging_sales.py
+
+      - name: Load staging (returns)
+        run: python scripts/etl/load_staging_returns.py
+
+      - name: Load warehouse (dims)
+        run: python scripts/etl/load_warehouse_dims.py
+
+      - name: Load warehouse (fact)
+        run: python scripts/etl/load_fact_sales.py
+
+      - name: Run acceptance tests
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d sales_dw -f scripts/db/12_master_test_runner.sql
+
+      - name: ETL quality report
+        run: python scripts/etl/quality_report.py
