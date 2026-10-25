@@ -47,10 +47,10 @@ A 4-page Power BI dashboard is included in `dashboards/` (`.pbix` + PDF + screen
 
 | Page | Preview |
 |---|---|
-| Sales Overview | ![Sales Overview](dashboards/screenshots/1.png) |
-| Branches | ![Branches](dashboards/screenshots/2.png) |
-| Customers | ![Customers](dashboards/screenshots/3.png) |
-| ETL Quality | ![ETL Quality](dashboards/screenshots/4.png) |
+| Sales Overview | ![Sales Overview](https://raw.githubusercontent.com/AhmadQD/sales-data-warehouse/main/dashboards/screenshots/1.png) |
+| Branches | ![Branches](https://raw.githubusercontent.com/AhmadQD/sales-data-warehouse/main/dashboards/screenshots/2.png) |
+| Customers | ![Customers](https://raw.githubusercontent.com/AhmadQD/sales-data-warehouse/main/dashboards/screenshots/3.png) |
+| ETL Quality | ![ETL Quality](https://raw.githubusercontent.com/AhmadQD/sales-data-warehouse/main/dashboards/screenshots/4.png) |
 
 Open `dashboards/sales_dashboard.pbix` in Power BI Desktop to interact with it.
 
