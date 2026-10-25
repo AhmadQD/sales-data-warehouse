@@ -38,6 +38,26 @@ A production-style **PostgreSQL data warehouse** with a layered ETL pipeline.
 - **fact_sales**: 99,570 rows, $30.8M gross, $7.6M profit
 - **11 views** answer the 8 analytical questions
 
+
+
+
+## Power BI Dashboard
+
+A 4-page Power BI dashboard is included in `dashboards/` (`.pbix` + PDF + screenshots).
+
+| Page | Preview |
+|---|---|
+| Sales Overview | ![Sales Overview](dashboards/screenshots/1.png) |
+| Branches | ![Branches](dashboards/screenshots/2.png) |
+| Customers | ![Customers](dashboards/screenshots/3.png) |
+| ETL Quality | ![ETL Quality](dashboards/screenshots/4.png) |
+
+Open `dashboards/sales_dashboard.pbix` in Power BI Desktop to interact with it.
+
+
+
+
+
 ## Quick start
 
     git clone https://github.com/AhmadQD/sales-data-warehouse.git
