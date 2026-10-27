@@ -2,7 +2,10 @@
 -- 09_create_fact_sales.sql
 -- Creates warehouse.fact_sales (star schema fact table).
 --
--- Grain: one row per sales line (order_id).
+-- Grain: one row per order_id (current synthetic data has exactly one
+--        line item per order). In a real retail model, an order may have
+--        multiple lines and the grain would become "one row per sales line",
+--        keyed by a sales_line_id, not order_id.
 --
 -- Design notes:
 --   * order_id is a degenerate dimension (needed to link returns).

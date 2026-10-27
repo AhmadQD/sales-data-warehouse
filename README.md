@@ -40,6 +40,12 @@ A production-style **PostgreSQL data warehouse** with a layered ETL pipeline.
 - **11 views** answer the 8 analytical questions
 ![Acceptance Tests](dashboards/screenshots/05_tests_pass.png)
 
+> **Note on row counts**: Local development runs may include up to 70
+> extra test rows (added during incremental-load testing), giving 99,570.
+> A clean CI run produces exactly **99,500** rows (101,000 raw − 500
+> rejected − 1,000 duplicates). Both are correct; the difference is
+> the test data, not the pipeline.
+
 
 
 ### On detection, precision, and recall
