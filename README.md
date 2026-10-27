@@ -11,7 +11,7 @@ A portfolio project demonstrating a PostgreSQL data warehouse, a layered ETL pip
 - **Data warehousing:** Star schema with one fact table and four dimensions.
 - **Layered ETL:** `raw` → `staging` → `warehouse`.
 - **Data quality:** Validation against expected anomaly counts in a synthetic ground-truth catalog.
-- **SQL testing:** 18 acceptance tests covering data integrity and business rules.
+- **SQL testing:** 20 acceptance tests covering data integrity and business rules.
 - **Incremental loading:** Watermark-based processing with documented limitations.
 - **Data lineage and auditing:** Raw source preservation, rejected-row tracking, and ETL run history.
 - **Database security:** Role-based access and separation of analytical access from raw and staging data.
@@ -102,7 +102,7 @@ The tests cover areas such as:
 - Financial calculation consistency
 - Data quality and warehouse integrity rules
 
-The repository documents a successful **18/18 acceptance-test run**. See the [GitHub Actions workflow](https://github.com/AhmadQD/sales-data-warehouse/actions/workflows/test.yml) for CI status.
+The repository documents a successful **20/20 acceptance-test run**. See the [GitHub Actions workflow](https://github.com/AhmadQD/sales-data-warehouse/actions/workflows/test.yml) for CI status.
 
 ![Acceptance Test Results](dashboards/screenshots/05_tests_pass.png)
 
@@ -121,7 +121,7 @@ The repository documents the following results:
 | Profit, local snapshot | $7.6M |
 | Analytical SQL views | 11 |
 | Analytical questions | 8 |
-| Acceptance tests | 18 |
+| Acceptance tests | 20 |
 
 **Interpreting row counts:** The clean CI dataset produces 99,500 fact rows. The local development database may contain up to 70 additional test rows from incremental-loading experiments, resulting in 99,570 rows.
 
@@ -153,7 +153,7 @@ The project documents a backup process using:
 - Retention of the seven most recent backups
 - `pg_restore --list` to inspect backup archives
 
-A restore test documented on October 23, 2026, restored a backup to a separate database and passed the 18 acceptance tests.
+A restore test documented on October 23, 2026, restored a backup to a separate database and passed the 20 acceptance tests.
 
 **Scope limitation:** The backup process is currently manual and local. Automated scheduling, off-site storage, encryption, and recovery on a separate PostgreSQL cluster are not implemented as part of the current project.
 
@@ -272,7 +272,7 @@ psql -U postgres -d sales_dw -v ON_ERROR_STOP=1 -f scripts/db/12_master_test_run
 python scripts/etl/quality_report.py
 ```
 
-A successful acceptance-test run should report 18 passing tests. The quality report checks observed counts against the synthetic anomaly catalog.
+A successful acceptance-test run should report 20 passing tests. The quality report checks observed counts against the synthetic anomaly catalog.
 
 **Note:** These steps follow the CI workflow but have not been verified here as a fresh installation on every operating system. Local role permissions, PostgreSQL credentials, and existing database state may require adjustments.
 

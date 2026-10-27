@@ -76,6 +76,22 @@ SELECT 'staging', 'T07 all branch_id lowercase',
        COUNT(*)::text
 FROM staging.sales_clean WHERE branch_id <> LOWER(branch_id);
 
+
+INSERT INTO test_results
+SELECT 'fact', 'F06b net = gross * (1 - discount)',
+       CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+       COUNT(*)::text
+FROM warehouse.fact_sales
+WHERE ABS(net_amount - ROUND(gross_amount * (1 - discount), 2)) > 0.01;
+
+INSERT INTO test_results
+SELECT 'fact', 'F06c cost = quantity * dim_product.unit_cost',
+       CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+       COUNT(*)::text
+FROM warehouse.fact_sales f
+JOIN warehouse.dim_product p ON f.product_key = p.product_key
+WHERE f.cost_amount <> ROUND(f.quantity * p.unit_cost, 2);
+
 INSERT INTO test_results
 SELECT 'staging', 'T08 no orphan customer_id',
        CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
@@ -84,6 +100,18 @@ FROM staging.sales_clean s
 LEFT JOIN staging.customers_clean c ON s.customer_id = c.customer_id
 WHERE s.customer_id IS NOT NULL AND c.customer_id IS NULL;
 
+
+INSERT INTO test_results
+SELECT 'fact', 'F09 fact keys match staging order_ids',
+       CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+       COUNT(*)::text
+FROM (
+    SELECT order_id FROM staging.sales_clean
+    EXCEPT
+    SELECT order_id FROM warehouse.fact_sales
+) d;
+
+
 INSERT INTO test_results
 SELECT 'staging', 'T09 no orphan product_id',
        CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
@@ -91,6 +119,17 @@ SELECT 'staging', 'T09 no orphan product_id',
 FROM staging.sales_clean s
 LEFT JOIN staging.products_clean p ON s.product_id = p.product_id
 WHERE p.product_id IS NULL;
+
+
+INSERT INTO test_results
+SELECT 'fact', 'F10 no duplicate order_id in fact (idempotency)',
+       CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+       COUNT(*)::text
+FROM (
+    SELECT order_id FROM warehouse.fact_sales
+    GROUP BY order_id HAVING COUNT(*) > 1
+) d;
+
 
 INSERT INTO test_results
 SELECT 'staging', 'T10 no orphan branch_id',
