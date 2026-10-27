@@ -22,6 +22,7 @@ A production-style **PostgreSQL data warehouse** with a layered ETL pipeline.
 ## Architecture
 
     data/raw/* → raw → staging → warehouse → analyst (views)
+    ![Star Schema](docs/diagrams/star_schema.png)
 
 ## Documentation
 
@@ -37,6 +38,23 @@ A production-style **PostgreSQL data warehouse** with a layered ETL pipeline.
 - **18/18 acceptance tests PASS**
 - **fact_sales**: 99,570 rows, $30.8M gross, $7.6M profit
 - **11 views** answer the 8 analytical questions
+![Acceptance Tests](dashboards/screenshots/05_tests_pass.png)
+
+
+
+### On detection, precision, and recall
+
+- **Detection rate**: 100% (9,500 injected errors were all detected).
+- **Precision**: 100% (no false positives — every reported anomaly
+  matches an injected error in `raw.error_catalog_raw`).
+- **Recall**: 100% (every injected error was reported).
+
+**Important**: these metrics are measured against a **synthetic,
+seeded dataset** where the ground truth (`error_catalog.csv`) is
+fully known. On real-world data, precision and recall would be
+lower and require human review. The per-error-type comparison in
+`scripts/etl/quality_report.py` (and `warehouse.vw_etl_quality`)
+is the mechanism that makes this auditable — not the headline number.
 
 
 
