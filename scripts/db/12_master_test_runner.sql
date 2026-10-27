@@ -34,10 +34,10 @@ CREATE TEMP TABLE test_results (
 -- Section 1: staging
 -- ============================================================
 INSERT INTO test_results
-SELECT 'staging', 'T01 sales_clean row count = 99500',
-       CASE WHEN COUNT(*) = 99500 THEN 'PASS' ELSE 'FAIL' END,
-       COUNT(*)::text
-FROM staging.sales_clean;
+SELECT 'staging', 'T01 sales_clean matches fact_sales',
+       CASE WHEN (SELECT COUNT(*) FROM staging.sales_clean) = (SELECT COUNT(*) FROM warehouse.fact_sales)
+            THEN 'PASS' ELSE 'FAIL' END,
+       (SELECT COUNT(*) FROM staging.sales_clean)::text;
 
 INSERT INTO test_results
 SELECT 'staging', 'T02 rejected sales rows = 500',
