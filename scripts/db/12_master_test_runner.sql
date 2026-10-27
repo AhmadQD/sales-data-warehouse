@@ -192,5 +192,22 @@ SELECT
     END                                            AS verdict
 FROM test_results;
 
-\echo ''
+-- ============================================================
+-- Fail the transaction (and psql exit code) if any test failed.
+-- This ensures GitHub Actions marks the workflow as failed.
+-- ============================================================
+DO $$
+DECLARE
+    failed_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO failed_count
+    FROM pg_temp.test_results
+    WHERE result = 'FAIL';
+
+    IF failed_count > 0 THEN
+        RAISE EXCEPTION 'MASTER TEST RUNNER FAILED: % test(s) failed', failed_count;
+    END IF;
+END $$;
+
 DROP TABLE pg_temp.test_results;
+
