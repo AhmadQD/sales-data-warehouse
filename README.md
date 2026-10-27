@@ -58,19 +58,15 @@ Open `dashboards/sales_dashboard.pbix` in Power BI Desktop to interact with it.
 
 
 
-## Quick start
+## Quick start (from scratch)
 
-    git clone https://github.com/AhmadQD/sales-data-warehouse.git
-    cd sales-data-warehouse
-    pip install psycopg2-binary pandas openpyxl python-dotenv
-    python scripts/generate_data.py
-    psql -U postgres -f scripts/db/01_create_database.sql
-    python scripts/etl/load_raw.py
-    python scripts/etl/load_staging_sales.py
-    python scripts/etl/load_fact_sales.py
-    psql -U postgres -d sales_dw -f scripts/db/12_master_test_runner.sql
-    psql -U postgres -d sales_dw -f scripts/queries/run_all.sql
+**Prerequisites**: PostgreSQL ≥ 14, Python ≥ 3.10, Git Bash (Windows) or bash.
 
-## License
+### 1. Clone and install
 
-Educational project. Synthetic data. No warranty.
+```bash
+git clone https://github.com/AhmadQD/sales-data-warehouse.git
+cd sales-data-warehouse
+python -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+pip install psycopg2-binary pandas openpyxl python-dotenv
