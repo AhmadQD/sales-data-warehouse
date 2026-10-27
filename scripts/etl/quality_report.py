@@ -1,14 +1,20 @@
 """
-ETL Quality Report — answers analytical question 8:
-"How many records were corrected or rejected in each load?"
+ETL Quality Report — answers analytical question 8.
 
-Compares the ETL's measured results (staging.etl_stats + staging.rejected_rows
-+ staging.orphan_returns) against the ground truth in raw.error_catalog_raw.
+Reads the LATEST run from staging.etl_runs (append-only audit log),
+compares observed counts with raw.error_catalog_raw, and EXITS WITH
+NON-ZERO CODE if any mismatch is found. This ensures CI fails when
+data quality degrades.
+
+Note: dirty_branch_id is computed directly from raw.sales_raw, because
+the source uses uppercase branch_ids (all rows change on LOWER(TRIM)),
+while the catalog only counts the 2,000 intentionally-injected rows.
 
 Run from repository root:
     python scripts/etl/quality_report.py
 """
 import os
+import sys
 from pathlib import Path
 
 import psycopg2
@@ -28,132 +34,113 @@ def get_connection():
     )
 
 
-# How each injected error is measured from the ETL outputs.
-# Each entry: (catalog error_type, SQL to compute observed count)
-OBSERVED_SQL = {
-    "mixed_date_format": """
-        SELECT value FROM staging.etl_stats
-        WHERE source_table='raw.sales_raw' AND metric='normalized_date'
-    """,
-    "missing_customer_id": """
-        SELECT value FROM staging.etl_stats
-        WHERE source_table='raw.sales_raw' AND metric='nulled_customer_id'
-    """,
-    "dirty_branch_id": """
-        -- rows whose branch_id differed from LOWER(TRIM(...))
-        -- (all rows had mixed-case branch_id, so normalized_branch_id counts them)
-        SELECT value FROM staging.etl_stats
-        WHERE source_table='raw.sales_raw' AND metric='normalized_branch_id'
-    """,
-    "negative_quantity": """
-        SELECT value FROM staging.etl_stats
-        WHERE source_table='raw.sales_raw' AND metric='rejected_negative_quantity'
-    """,
-    "missing_discount": """
-        SELECT value FROM staging.etl_stats
-        WHERE source_table='raw.sales_raw' AND metric='normalized_discount'
-    """,
-    "duplicate_row": """
-        SELECT value FROM staging.etl_stats
-        WHERE source_table='raw.sales_raw' AND metric='duplicates_removed'
-    """,
-}
-
-# For dirty_branch_id, the catalog expects 2000 (only the injected rows),
-# but normalized_branch_id counts ALL rows (101000) because the source
-# uses uppercase everywhere. We override with a more targeted measure below.
-OVERRIDES = {
-    "dirty_branch_id": """
-        -- Count rows whose branch_id in raw contained a space or lowercase letters
-        SELECT COUNT(*) FROM raw.sales_raw
-        WHERE branch_id <> UPPER(TRIM(branch_id))
-           OR branch_id <> TRIM(branch_id)
-    """,
-}
-
-
 def main():
     conn = get_connection()
+    exit_code = 0
+
     try:
         with conn.cursor() as cur:
+            # Latest run from etl_runs
+            cur.execute("""
+                SELECT
+                    rejected_negative_quantity,
+                    rejected_bad_date,
+                    rejected_other,
+                    duplicates_removed,
+                    normalized_branch_id,
+                    normalized_date,
+                    normalized_discount,
+                    nulled_customer_id,
+                    rows_read,
+                    rows_kept
+                FROM staging.etl_runs
+                WHERE pipeline_name = 'staging_sales'
+                ORDER BY run_at DESC
+                LIMIT 1
+            """)
+            latest = cur.fetchone()
+
+            if latest is None:
+                print("ERROR: no ETL runs found in staging.etl_runs", file=sys.stderr)
+                return 1
+
+            (neg_qty, bad_date, other, dups, norm_branch,
+             norm_date, norm_disc, null_cust, rows_read, rows_kept) = latest
+
             # Ground truth
             cur.execute("""
-                SELECT error_type, injected_count::int, description
+                SELECT error_type, injected_count::int
                 FROM raw.error_catalog_raw
                 ORDER BY error_type
             """)
-            catalog = cur.fetchall()
+            catalog = dict(cur.fetchall())
+
+            # Map catalog error_type -> observed count from the latest run
+            observed_map = {
+                "mixed_date_format":   norm_date,
+                "missing_customer_id": null_cust,
+                "dirty_branch_id":     None,  # computed from raw below
+                "negative_quantity":   neg_qty,
+                "missing_discount":    norm_disc,
+                "duplicate_row":       dups,
+            }
 
             print("=" * 78)
             print("ETL QUALITY REPORT — Answers question 8")
             print("=" * 78)
+            print(f"Source: staging.etl_runs (latest run)")
+            print(f"  rows_read = {rows_read}, rows_kept = {rows_kept}")
             print()
             print(f"{'error_type':<24} {'expected':>10} {'observed':>10} {'match':>8}")
             print("-" * 78)
 
-            all_ok = True
             total_expected = 0
             total_observed = 0
+            failures = 0
 
-            for error_type, expected, _desc in catalog:
-                # Use override if present
-                if error_type in OVERRIDES:
-                    cur.execute(OVERRIDES[error_type])
+            for error_type, expected in sorted(catalog.items()):
+                if error_type == "dirty_branch_id":
+                    cur.execute("""
+                        SELECT COUNT(*) FROM raw.sales_raw
+                        WHERE branch_id <> TRIM(branch_id)
+                           OR branch_id <> UPPER(branch_id)
+                    """)
                     observed = cur.fetchone()[0]
-                elif error_type in OBSERVED_SQL:
-                    cur.execute(OBSERVED_SQL[error_type])
-                    row = cur.fetchone()
-                    observed = row[0] if row else 0
                 else:
-                    observed = None
+                    observed = observed_map.get(error_type)
 
+                if observed is None:
+                    print(f"{error_type:<24} {expected:>10} {'?':>10} {'N/A':>8}")
+                    failures += 1
+                    continue
+
+                match = (observed == expected)
                 total_expected += expected
-                if observed is not None:
-                    total_observed += observed
-                    match = "OK" if observed == expected else "DIFF"
-                    if observed != expected:
-                        all_ok = False
-                else:
-                    match = "N/A"
-
-                obs_str = str(observed) if observed is not None else "?"
-                print(f"{error_type:<24} {expected:>10} {obs_str:>10} {match:>8}")
+                total_observed += observed
+                if not match:
+                    failures += 1
+                print(f"{error_type:<24} {expected:>10} {observed:>10} {'OK' if match else 'DIFF':>8}")
 
             print("-" * 78)
             print(f"{'TOTAL':<24} {total_expected:>10} {total_observed:>10}")
             print()
 
-            # Detection rate
             if total_expected > 0:
                 rate = 100.0 * total_observed / total_expected
                 print(f"Detection rate: {rate:.2f}%")
 
-            # Additional info: rejected rows and orphan returns
             print()
-            print("Additional ETL results:")
-            cur.execute("""
-                SELECT source_table, COUNT(*)
-                FROM staging.rejected_rows
-                GROUP BY source_table
-                ORDER BY source_table
-            """)
-            for src, cnt in cur.fetchall():
-                print(f"  rejected rows from {src}: {cnt}")
-
-            cur.execute("SELECT COUNT(*) FROM staging.orphan_returns")
-            orphans = cur.fetchone()[0]
-            print(f"  orphan returns (order_id not in sales_clean): {orphans}")
-
-            print()
-            if all_ok:
-                print("RESULT: ETL detected every injected error with expected counts.")
+            if failures == 0:
+                print("RESULT: PASS — all error counts match the catalog.")
             else:
-                print("RESULT: Some counts differ from the catalog — review above.")
+                print(f"RESULT: FAIL — {failures} mismatch(es) found.")
+                exit_code = 1
 
     finally:
         conn.close()
 
+    return exit_code
+
 
 if __name__ == "__main__":
-    main()
-    
+    sys.exit(main())
