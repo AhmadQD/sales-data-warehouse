@@ -49,29 +49,25 @@ A production-style **PostgreSQL data warehouse** with a layered ETL pipeline.
 
 ### Data Quality Detection Validation
 
-The ETL pipeline was validated against the expected counts of injected data anomalies in the synthetic dataset. The validation checks whether the observed anomaly counts match the expected counts for each error category.
+The ETL pipeline was validated against expected anomaly counts in a seeded synthetic dataset (`SEED=42`). The validation compares observed anomaly counts with the expected counts for each error category.
 
-**Limitation:** This validation confirms aggregate detection-count agreement; it does not establish record-level precision or recall because the current anomaly catalog does not identify the specific records containing each injected error.
+**Limitation:** This is count-based validation, not record-level accuracy measurement. Because the ground-truth catalog stores aggregate counts rather than record-level anomaly labels, record-level precision, recall, false positives, and false negatives cannot currently be reliably measured.
 
-The reported detection rate (9,500 / 9,500 expected injected anomalies) should therefore be interpreted as **count-based validation**, not as proof of 100% record-level detection accuracy. Record-level precision and recall would require record-level ground-truth labels and a comparison against the ETL detection results.
+The reported result of 9,500 / 9,500 expected injected anomalies indicates agreement between observed and expected counts. It should not be interpreted as proof that every injected anomaly was detected correctly.
 
-Results on synthetic data may not represent detection performance on real-world data.
+Record-level precision and recall would require record-level ground-truth labels and comparison with the ETL detection results. Results on synthetic data may not represent performance on real-world data.
 
 
 
-### On detection, precision, and recall
+### Detection Metrics and Limitations
 
-- **Detection rate**: 100% (9,500 injected errors were all detected).
-- **Precision**: 100% (no false positives — every reported anomaly
-  matches an injected error in `raw.error_catalog_raw`).
-- **Recall**: 100% (every injected error was reported).
+The current validation confirms that the observed anomaly counts match the expected injected anomaly counts for each error category in the synthetic dataset.
 
-**Important**: these metrics are measured against a **synthetic,
-seeded dataset** where the ground truth (`error_catalog.csv`) is
-fully known. On real-world data, precision and recall would be
-lower and require human review. The per-error-type comparison in
-`scripts/etl/quality_report.py` (and `warehouse.vw_etl_quality`)
-is the mechanism that makes this auditable — not the headline number.
+This is **count-based validation**, not record-level precision or recall. The current ground-truth catalog stores aggregate counts rather than record-level anomaly labels, so false positives and false negatives cannot be reliably quantified at the record level.
+
+Record-level precision and recall remain unmeasured and would require record-level ground-truth labels and comparison with the ETL detection results.
+
+These results apply to the seeded synthetic dataset and should not be interpreted as a guarantee of equivalent performance on real-world data.
 
 
 
