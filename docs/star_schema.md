@@ -9,6 +9,12 @@ The warehouse follows a classic star schema:
 
 1 fact table: fact_sales
 
+> **Grain assumption**: one row per `order_id`. This holds for the current
+> synthetic dataset (each order contains a single product). In a real
+> retail scenario, an order may contain multiple line items; the grain
+> would then become "one row per sales line", and a `sales_line_id`
+> surrogate key would replace `order_id` as the deduplication key.
+
 4 dimension tables: dim_date, dim_customer, dim_product, dim_branch
 
 1 degenerate dimension: order_id (stored inside fact_sales, no separate table)

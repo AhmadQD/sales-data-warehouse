@@ -330,4 +330,33 @@ implemented.
    alone is not enough for `BIGSERIAL`.
 6. **`CREATE OR REPLACE VIEW` cannot change column types.** Use
    `DROP VIEW` + `CREATE VIEW` when the underlying types change.
+
+
+   
+---
+
+## 18. Incremental loading assumes monotonic `order_id`
+
+**Decision**: `load_staging_sales.py` uses `WHERE order_id > last_loaded_key`
+to load only new rows.
+
+**Why**:
+- The synthetic dataset generates `order_id` monotonically (`O0000001`,
+  `O0000002`, ...), so this assumption is safe **for this project**.
+- It makes the pipeline idempotent and efficient.
+
+**Known limitation**: In a real source, the following scenarios would
+be missed:
+- **Late-arriving records**: an order with a smaller `order_id` that
+  arrives after the watermark has advanced. It will be skipped.
+- **Updates to existing orders**: `ON CONFLICT DO NOTHING` ignores them.
+
+**Production fix (not implemented)**:
+- Add a `created_at`/`updated_at` column to the source, and use a
+  `(updated_at, order_id)` composite watermark.
+- Or switch to `UPSERT` (`ON CONFLICT ... DO UPDATE`).
+- Or implement Change Data Capture (CDC) from the source database.
+
+**Scope decision**: For a 4-week learning project with a controlled
+source, this trade-off is acceptable and documented explicitly.
     
