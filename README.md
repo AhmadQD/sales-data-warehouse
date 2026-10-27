@@ -47,6 +47,17 @@ A production-style **PostgreSQL data warehouse** with a layered ETL pipeline.
 > the test data, not the pipeline.
 
 
+### Data Quality Detection Validation
+
+The ETL pipeline was validated against the expected counts of injected data anomalies in the synthetic dataset. The validation checks whether the observed anomaly counts match the expected counts for each error category.
+
+**Limitation:** This validation confirms aggregate detection-count agreement; it does not establish record-level precision or recall because the current anomaly catalog does not identify the specific records containing each injected error.
+
+The reported detection rate (9,500 / 9,500 expected injected anomalies) should therefore be interpreted as **count-based validation**, not as proof of 100% record-level detection accuracy. Record-level precision and recall would require record-level ground-truth labels and a comparison against the ETL detection results.
+
+Results on synthetic data may not represent detection performance on real-world data.
+
+
 
 ### On detection, precision, and recall
 
