@@ -56,3 +56,5 @@ psql -U postgres -c "CREATE DATABASE sales_dw;"
 psql -U postgres -f backups/roles_<timestamp>.sql
 pg_restore -U postgres -d sales_dw --clean --if-exists backups/sales_dw_<timestamp>.dump
 psql -U postgres -d sales_dw -f scripts/db/12_master_test_runner.sql
+
+
