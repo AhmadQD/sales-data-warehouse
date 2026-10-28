@@ -27,7 +27,7 @@ ALTER TABLE warehouse.etl_watermark OWNER TO etl_user;
 
 -- Initialize the two pipelines we will implement
 INSERT INTO warehouse.etl_watermark
-    (pipeline_name, last_loaded_key, last_loaded_date, rows_loaded_last_run, total_rows_loaded)
+    (pipeline_name, last_loaded_key, last_loaded_date, rows_loaded_last_run, total_rows_processed)
 VALUES
     ('staging_sales', NULL, NULL, 0, 0),
     ('fact_sales',    NULL, NULL, 0, 0);
