@@ -11,7 +11,7 @@ A full restore was performed to validate the backup:
 3. Applied roles from `backups/roles_2026-10-23_00-03-57.sql`.
 4. Ran `scripts/db/12_master_test_runner.sql`.
 
-**Result: 18/18 tests PASS.** The dump contains 99,570 rows in
+**Result: 24/24 tests PASS.** The dump contains 99,570 rows in
 `fact_sales` (matches source at backup time). The restored database
 is indistinguishable from the original in behavior.
 
