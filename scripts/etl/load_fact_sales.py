@@ -182,6 +182,7 @@ def load_fact(conn):
                 max_date = order_date
 
         if to_insert:
+            
             execute_values(
                 cur,
                 """
@@ -190,6 +191,18 @@ def load_fact(conn):
                      quantity, unit_price, discount,
                      gross_amount, net_amount, cost_amount, profit_amount)
                 VALUES %s
+                ON CONFLICT (order_id) DO UPDATE SET
+                    date_key      = EXCLUDED.date_key,
+                    customer_key  = EXCLUDED.customer_key,
+                    product_key   = EXCLUDED.product_key,
+                    branch_key    = EXCLUDED.branch_key,
+                    quantity      = EXCLUDED.quantity,
+                    unit_price    = EXCLUDED.unit_price,
+                    discount      = EXCLUDED.discount,
+                    gross_amount  = EXCLUDED.gross_amount,
+                    net_amount    = EXCLUDED.net_amount,
+                    cost_amount   = EXCLUDED.cost_amount,
+                    profit_amount = EXCLUDED.profit_amount
                 """,
                 to_insert,
             )

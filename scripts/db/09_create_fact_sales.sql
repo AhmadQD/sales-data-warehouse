@@ -21,7 +21,7 @@
 
 CREATE TABLE warehouse.fact_sales (
     sales_key      BIGSERIAL     PRIMARY KEY,
-    order_id       TEXT          NOT NULL,           -- degenerate dimension
+ order_id          TEXT          NOT NULL UNIQUE,    -- degenerate dimension
     date_key       INTEGER       NOT NULL REFERENCES warehouse.dim_date(date_key),
     customer_key   BIGINT        NOT NULL REFERENCES warehouse.dim_customer(customer_key),
     product_key    BIGINT        NOT NULL REFERENCES warehouse.dim_product(product_key),
