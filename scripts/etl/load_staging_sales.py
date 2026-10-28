@@ -76,7 +76,7 @@ def update_watermark(cur, pipeline, last_key, last_date, rows_last_run):
             last_loaded_date = %s,
             last_run_at = NOW(),
             rows_loaded_last_run = %s,
-            total_rows_loaded = total_rows_loaded + %s
+            total_rows_processed = total_rows_processed + %s
         WHERE pipeline_name = %s
         """,
         (last_key, last_date, rows_last_run, rows_last_run, pipeline),

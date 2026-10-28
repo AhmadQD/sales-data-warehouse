@@ -19,8 +19,8 @@ CREATE TABLE warehouse.etl_watermark (
     last_loaded_key      TEXT,                          -- e.g. 'O0099999'
     last_loaded_date     DATE,                          -- optional, for date-based pipelines
     last_run_at          TIMESTAMP    NOT NULL DEFAULT NOW(),
-    rows_loaded_last_run INTEGER      NOT NULL DEFAULT 0,
-    total_rows_loaded    INTEGER      NOT NULL DEFAULT 0
+ rows_loaded_last_run    INTEGER      NOT NULL DEFAULT 0,
+    total_rows_processed INTEGER      NOT NULL DEFAULT 0
 );
 
 ALTER TABLE warehouse.etl_watermark OWNER TO etl_user;
