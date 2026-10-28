@@ -92,6 +92,26 @@ FROM warehouse.fact_sales f
 JOIN warehouse.dim_product p ON f.product_key = p.product_key
 WHERE f.cost_amount <> ROUND(f.quantity * p.unit_cost, 2);
 
+
+
+INSERT INTO test_results
+SELECT 'fact', 'F06d discount = 0 implies net = gross',
+       CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+       COUNT(*)::text
+FROM warehouse.fact_sales
+WHERE discount = 0 AND net_amount <> gross_amount;
+
+INSERT INTO test_results
+SELECT 'fact', 'F06e discount = 1 implies net = 0',
+       CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
+       COUNT(*)::text
+FROM warehouse.fact_sales
+WHERE discount = 1 AND net_amount <> 0;
+
+
+
+
+
 INSERT INTO test_results
 SELECT 'staging', 'T08 no orphan customer_id',
        CASE WHEN COUNT(*) = 0 THEN 'PASS' ELSE 'FAIL' END,
