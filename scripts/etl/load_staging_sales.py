@@ -233,12 +233,13 @@ def clean_sales(conn):
 
 
 
-        # Deduplicate to_insert by order_id (keep last occurrence)
+               # Deduplicate to_insert by order_id (keep last occurrence)
+        before_dedup = len(to_insert)
         dedup = {}
         for row in to_insert:
             dedup[row[0]] = row
         to_insert = list(dedup.values())
-
+        stats["duplicates_removed"] = before_dedup - len(to_insert)
 
 
 
@@ -293,7 +294,7 @@ def clean_sales(conn):
         else:
             stats["watermark_after"] = wm
 
-           # Update the run entry
+                  # Update the run entry
         cur.execute(
             """
             UPDATE staging.etl_runs
@@ -301,6 +302,7 @@ def clean_sales(conn):
                 rows_kept = %s,
                 rows_inserted = %s,
                 rows_updated = %s,
+                duplicates_removed = %s,
                 rejected_negative_quantity = %s,
                 rejected_bad_date = %s,
                 rejected_other = %s,
@@ -313,6 +315,7 @@ def clean_sales(conn):
             (
                 stats["read"], stats["kept"],
                 stats.get("rows_inserted", 0), stats.get("rows_updated", 0),
+                stats.get("duplicates_removed", 0),
                 stats["rejected_negative_quantity"], stats["rejected_bad_date"],
                 stats["rejected_other"],
                 stats["normalized_branch_id"], stats["normalized_date"],

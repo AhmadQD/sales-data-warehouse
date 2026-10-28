@@ -39,13 +39,18 @@ SELECT 'staging', 'T01 sales_clean matches fact_sales',
             THEN 'PASS' ELSE 'FAIL' END,
        (SELECT COUNT(*) FROM staging.sales_clean)::text;
 
+
 INSERT INTO test_results
-SELECT 'staging', 'T02 rejected sales rows in latest run = 500',
+SELECT 'staging', 'T02 rejected sales rows in latest non-empty run = 500',
        CASE WHEN COUNT(*) = 500 THEN 'PASS' ELSE 'FAIL' END,
        COUNT(*)::text
 FROM staging.rejected_rows
 WHERE source_table = 'raw.sales_raw'
-  AND run_id = (SELECT MAX(run_id) FROM staging.etl_runs WHERE pipeline_name = 'staging_sales');
+  AND run_id = (
+      SELECT MAX(run_id) FROM staging.etl_runs
+      WHERE pipeline_name = 'staging_sales'
+        AND rows_read > 0
+  );
 
 INSERT INTO test_results
 SELECT 'staging', 'T03 no duplicate order_id',

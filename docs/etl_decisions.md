@@ -335,28 +335,25 @@ implemented.
    
 ---
 
-## 18. Incremental loading assumes monotonic `order_id`
+## 18. Incremental loading uses UPSERT, but watermark remains the limit
 
-**Decision**: `load_staging_sales.py` uses `WHERE order_id > last_loaded_key`
-to load only new rows.
+**Decision**: `load_staging_sales.py` and `load_fact_sales.py` use
+`ON CONFLICT (order_id) DO UPDATE` (UPSERT). The watermark still
+filters with `WHERE order_id > last_loaded_key`.
 
 **Why**:
-- The synthetic dataset generates `order_id` monotonically (`O0000001`,
-  `O0000002`, ...), so this assumption is safe **for this project**.
-- It makes the pipeline idempotent and efficient.
+- UPSERT handles **updates to existing orders** that are re-read.
+- The watermark makes the pipeline idempotent and efficient.
 
-**Known limitation**: In a real source, the following scenarios would
-be missed:
-- **Late-arriving records**: an order with a smaller `order_id` that
-  arrives after the watermark has advanced. It will be skipped.
-- **Updates to existing orders**: `ON CONFLICT DO NOTHING` ignores them.
+**Known limitation**: The watermark still filters by `order_id`, so:
+- **Late-arriving records** (with a smaller `order_id`) are skipped.
+- **Updates to existing orders** that don't pass the watermark are missed.
 
 **Production fix (not implemented)**:
-- Add a `created_at`/`updated_at` column to the source, and use a
+- Add an `updated_at` column to the source and use a
   `(updated_at, order_id)` composite watermark.
-- Or switch to `UPSERT` (`ON CONFLICT ... DO UPDATE`).
-- Or implement Change Data Capture (CDC) from the source database.
+- Or switch to Change Data Capture (CDC).
 
 **Scope decision**: For a 4-week learning project with a controlled
-source, this trade-off is acceptable and documented explicitly.
+synthetic source, this trade-off is documented explicitly.
     
