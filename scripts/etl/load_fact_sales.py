@@ -116,11 +116,8 @@ def load_fact(conn):
         rows = cur.fetchall()
         stats["read"] = len(rows)
 
-        # Defensive: existing order_ids in fact_sales (avoid duplicates on backfill)
-        existing_orders = set()
-        if wm is None:
-            cur.execute("SELECT order_id FROM warehouse.fact_sales")
-            existing_orders = {r[0] for r in cur.fetchall()}
+
+       
 
         to_insert = []
         max_order_id = wm
@@ -129,9 +126,8 @@ def load_fact(conn):
         for (order_id, order_date, branch_id, customer_id,
              product_id, quantity, unit_price, discount) in rows:
 
-            if order_id in existing_orders:
-                stats["skipped_existing"] += 1
-                continue
+
+           
 
             date_key = date_map.get(order_date)
             if date_key is None:

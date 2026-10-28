@@ -399,4 +399,16 @@ python scripts/etl/load_staging_sales.py
 psql -U postgres -d sales_dw -c \
   "SELECT order_id, quantity FROM staging.sales_clean
    WHERE order_id = '<ORDER_ID>';"
+
+
+
+
+   
+---
+
+**Execution Status (Section 19):** ✅ Passed (2026-10-28).
+
+Verified manually: updated `order_id = O0000001` quantity from 4 to 99
+in `raw.sales_raw`, reset the watermark, re-ran ETL, and confirmed
+`fact_sales.quantity = 99`. All 24 acceptance tests still pass.
     
