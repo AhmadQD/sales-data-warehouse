@@ -4,12 +4,12 @@ Clean and load raw.sales_raw into staging.sales_clean (incremental).
 Incremental strategy:
   * Read watermark WHERE pipeline_name='staging_sales'.
   * Only rows with order_id > last_loaded_key are processed.
-  * ON CONFLICT DO NOTHING (order_id is PK).
+  * ON CONFLICT (order_id) DO UPDATE (upsert).
   * Watermark updated in the SAME transaction as inserts.
 
 Audit:
-  * Every run is appended to staging.etl_runs (never deleted).
-  * vw_etl_quality reads the LATEST run per pipeline.
+  * Every run is appended to staging.etl_runs (append-only).
+  * Rejected rows are linked to their run_id, preserving history.
 
 Run from repository root:
     python scripts/etl/load_staging_sales.py
@@ -48,14 +48,14 @@ def parse_date(value: str):
     raise ValueError(f"unparseable order_date: {value!r}")
 
 
-def reject(cur, source_row_id, reason, raw_data):
+def reject(cur, run_id, source_row_id, reason, raw_data):
     cur.execute(
         """
         INSERT INTO staging.rejected_rows
-            (source_table, source_row_id, reason, raw_data)
-        VALUES ('raw.sales_raw', %s, %s, %s)
+            (run_id, source_table, source_row_id, reason, raw_data)
+        VALUES (%s, 'raw.sales_raw', %s, %s, %s)
         """,
-        (source_row_id, reason, raw_data),
+        (run_id, source_row_id, reason, raw_data),
     )
 
 
@@ -83,28 +83,6 @@ def update_watermark(cur, pipeline, last_key, last_date, rows_last_run):
     )
 
 
-def log_run(cur, stats):
-    """Append a row to staging.etl_runs (historical, never deleted)."""
-    cur.execute(
-        """
-        INSERT INTO staging.etl_runs
-            (pipeline_name, rows_read, rows_kept,
-             rejected_negative_quantity, rejected_bad_date, rejected_other,
-             duplicates_removed,
-             normalized_branch_id, normalized_date, normalized_discount,
-             nulled_customer_id)
-        VALUES ('staging_sales', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            stats["read"], stats["kept"],
-            stats["rejected_negative_quantity"], stats["rejected_bad_date"],
-            stats["rejected_other"], stats["duplicates_removed"],
-            stats["normalized_branch_id"], stats["normalized_date"],
-            stats["normalized_discount"], stats["nulled_customer_id"],
-        ),
-    )
-
-
 def clean_sales(conn):
     stats = {
         "read": 0,
@@ -112,21 +90,29 @@ def clean_sales(conn):
         "rejected_negative_quantity": 0,
         "rejected_bad_date": 0,
         "rejected_other": 0,
-        "duplicates_removed": 0,
         "normalized_branch_id": 0,
         "normalized_date": 0,
         "normalized_discount": 0,
         "nulled_customer_id": 0,
         "watermark_before": None,
         "watermark_after": None,
+        "run_id": None,
     }
 
     with conn.cursor() as cur:
+        # 1. Open a run entry FIRST (so we can link rejections to it)
+        cur.execute(
+            """
+            INSERT INTO staging.etl_runs
+                (pipeline_name, rows_read, rows_kept)
+            VALUES ('staging_sales', 0, 0)
+            RETURNING run_id
+            """
+        )
+        stats["run_id"] = cur.fetchone()[0]
+
         wm = get_watermark(cur, "staging_sales")
         stats["watermark_before"] = wm
-
-                # Clear previous rejections for this source before re-processing
-        cur.execute("DELETE FROM staging.rejected_rows WHERE source_table = 'raw.sales_raw'")
 
         if wm is None:
             cur.execute("""
@@ -148,7 +134,6 @@ def clean_sales(conn):
         stats["read"] = len(rows)
 
         to_insert = []
-        seen = set()
         max_order_id = wm
         max_date = None
 
@@ -162,19 +147,19 @@ def clean_sales(conn):
 
             order_id_s = (order_id or "").strip()
             if not order_id_s:
-                reject(cur, _row_id, "empty order_id", raw_repr)
+                reject(cur, stats["run_id"], _row_id, "empty order_id", raw_repr)
                 stats["rejected_other"] += 1
                 continue
 
             product_id_s = (product_id or "").strip()
             if not product_id_s:
-                reject(cur, _row_id, "empty product_id", raw_repr)
+                reject(cur, stats["run_id"], _row_id, "empty product_id", raw_repr)
                 stats["rejected_other"] += 1
                 continue
 
             branch_id_raw = (branch_id or "").strip()
             if not branch_id_raw:
-                reject(cur, _row_id, "empty branch_id", raw_repr)
+                reject(cur, stats["run_id"], _row_id, "empty branch_id", raw_repr)
                 stats["rejected_other"] += 1
                 continue
             branch_id_s = branch_id_raw.lower()
@@ -184,12 +169,12 @@ def clean_sales(conn):
             try:
                 qty = int(quantity)
             except (TypeError, ValueError):
-                reject(cur, _row_id, f"non-integer quantity: {quantity!r}", raw_repr)
+                reject(cur, stats["run_id"], _row_id, f"non-integer quantity: {quantity!r}", raw_repr)
                 stats["rejected_other"] += 1
                 continue
 
             if qty <= 0:
-                reject(cur, _row_id,
+                reject(cur, stats["run_id"], _row_id,
                        f"quantity <= 0 ({qty}) — ambiguous, rejected", raw_repr)
                 stats["rejected_negative_quantity"] += 1
                 continue
@@ -199,7 +184,7 @@ def clean_sales(conn):
                 if not order_date.strip().startswith(str(date_obj.year)):
                     stats["normalized_date"] += 1
             except ValueError as e:
-                reject(cur, _row_id, str(e), raw_repr)
+                reject(cur, stats["run_id"], _row_id, str(e), raw_repr)
                 stats["rejected_bad_date"] += 1
                 continue
 
@@ -211,11 +196,11 @@ def clean_sales(conn):
             try:
                 price = float(unit_price)
             except (TypeError, ValueError):
-                reject(cur, _row_id, f"non-numeric unit_price: {unit_price!r}", raw_repr)
+                reject(cur, stats["run_id"], _row_id, f"non-numeric unit_price: {unit_price!r}", raw_repr)
                 stats["rejected_other"] += 1
                 continue
             if price < 0:
-                reject(cur, _row_id, f"negative unit_price: {price}", raw_repr)
+                reject(cur, stats["run_id"], _row_id, f"negative unit_price: {price}", raw_repr)
                 stats["rejected_other"] += 1
                 continue
 
@@ -227,21 +212,13 @@ def clean_sales(conn):
                 try:
                     disc = float(disc_s)
                 except ValueError:
-                    reject(cur, _row_id, f"bad discount: {discount!r}", raw_repr)
+                    reject(cur, stats["run_id"], _row_id, f"bad discount: {discount!r}", raw_repr)
                     stats["rejected_other"] += 1
                     continue
                 if disc < 0 or disc > 1:
-                    reject(cur, _row_id, f"discount out of range: {disc}", raw_repr)
+                    reject(cur, stats["run_id"], _row_id, f"discount out of range: {disc}", raw_repr)
                     stats["rejected_other"] += 1
                     continue
-
-            # In-run dedup (only relevant for first backfill)
-            key = (order_id_s, date_obj, branch_id_s, customer_id_val,
-                   product_id_s, qty, round(price, 2), round(disc, 4))
-            if key in seen:
-                stats["duplicates_removed"] += 1
-                continue
-            seen.add(key)
 
             to_insert.append((
                 order_id_s, date_obj, branch_id_s, customer_id_val,
@@ -253,6 +230,19 @@ def clean_sales(conn):
             if max_date is None or date_obj > max_date:
                 max_date = date_obj
 
+
+
+
+        # Deduplicate to_insert by order_id (keep last occurrence)
+        dedup = {}
+        for row in to_insert:
+            dedup[row[0]] = row
+        to_insert = list(dedup.values())
+
+
+
+
+        # Insert with UPSERT
         if to_insert:
             execute_values(
                 cur,
@@ -261,7 +251,7 @@ def clean_sales(conn):
                     (order_id, order_date, branch_id, customer_id,
                      product_id, quantity, unit_price, discount)
                 VALUES %s
-                                ON CONFLICT (order_id) DO UPDATE SET
+                ON CONFLICT (order_id) DO UPDATE SET
                     order_date   = EXCLUDED.order_date,
                     branch_id    = EXCLUDED.branch_id,
                     customer_id  = EXCLUDED.customer_id,
@@ -289,8 +279,30 @@ def clean_sales(conn):
         else:
             stats["watermark_after"] = wm
 
-        # Append to audit log
-        log_run(cur, stats)
+        # Update the run entry
+        cur.execute(
+            """
+            UPDATE staging.etl_runs
+            SET rows_read = %s,
+                rows_kept = %s,
+                rejected_negative_quantity = %s,
+                rejected_bad_date = %s,
+                rejected_other = %s,
+                normalized_branch_id = %s,
+                normalized_date = %s,
+                normalized_discount = %s,
+                nulled_customer_id = %s
+            WHERE run_id = %s
+            """,
+            (
+                stats["read"], stats["kept"],
+                stats["rejected_negative_quantity"], stats["rejected_bad_date"],
+                stats["rejected_other"],
+                stats["normalized_branch_id"], stats["normalized_date"],
+                stats["normalized_discount"], stats["nulled_customer_id"],
+                stats["run_id"],
+            ),
+        )
 
         conn.commit()
 
@@ -305,14 +317,14 @@ def main():
         conn.close()
 
     print("=== staging.sales_clean (incremental) ===")
+    print(f"  run_id                      : {stats['run_id']}")
     print(f"  watermark before            : {stats['watermark_before']}")
     print(f"  watermark after             : {stats['watermark_after']}")
     print(f"  read                        : {stats['read']}")
-    print(f"  kept (new rows)             : {stats['kept']}")
+    print(f"  kept (new/updated)          : {stats['kept']}")
     print(f"  rejected (negative qty)     : {stats['rejected_negative_quantity']}")
     print(f"  rejected (bad date)         : {stats['rejected_bad_date']}")
     print(f"  rejected (other)            : {stats['rejected_other']}")
-    print(f"  duplicates removed          : {stats['duplicates_removed']}")
     print(f"  normalized (branch/date/disc): "
           f"{stats['normalized_branch_id']}/{stats['normalized_date']}/{stats['normalized_discount']}")
     print(f"  nulled customer_id          : {stats['nulled_customer_id']}")
@@ -320,4 +332,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

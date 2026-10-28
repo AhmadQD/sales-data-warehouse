@@ -65,13 +65,16 @@ CREATE INDEX idx_returns_clean_order ON staging.returns_clean(order_id);
 
 -- 6. Rejected rows (audit trail for every dropped row)
 CREATE TABLE staging.rejected_rows (
-rejected_id BIGSERIAL PRIMARY KEY,
-source_table TEXT NOT NULL,
-source_row_id BIGINT,
-reason TEXT NOT NULL,
-raw_data TEXT,
-rejected_at TIMESTAMP NOT NULL DEFAULT NOW()
+    rejected_id    BIGSERIAL    PRIMARY KEY,
+    run_id         BIGINT       NOT NULL,
+    source_table   TEXT         NOT NULL,
+    source_row_id  BIGINT,
+    reason         TEXT         NOT NULL,
+    raw_data       TEXT,
+    rejected_at    TIMESTAMP    NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX idx_rejected_run ON staging.rejected_rows(run_id);
 
 CREATE INDEX idx_rejected_source ON staging.rejected_rows(source_table);
 
