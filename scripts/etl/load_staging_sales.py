@@ -125,6 +125,9 @@ def clean_sales(conn):
         wm = get_watermark(cur, "staging_sales")
         stats["watermark_before"] = wm
 
+                # Clear previous rejections for this source before re-processing
+        cur.execute("DELETE FROM staging.rejected_rows WHERE source_table = 'raw.sales_raw'")
+
         if wm is None:
             cur.execute("""
                 SELECT _row_id, order_id, order_date, branch_id, customer_id,
@@ -258,7 +261,14 @@ def clean_sales(conn):
                     (order_id, order_date, branch_id, customer_id,
                      product_id, quantity, unit_price, discount)
                 VALUES %s
-                ON CONFLICT (order_id) DO NOTHING
+                                ON CONFLICT (order_id) DO UPDATE SET
+                    order_date   = EXCLUDED.order_date,
+                    branch_id    = EXCLUDED.branch_id,
+                    customer_id  = EXCLUDED.customer_id,
+                    product_id   = EXCLUDED.product_id,
+                    quantity     = EXCLUDED.quantity,
+                    unit_price   = EXCLUDED.unit_price,
+                    discount     = EXCLUDED.discount
                 """,
                 to_insert,
             )
