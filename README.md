@@ -136,7 +136,11 @@ This approach is suitable for the project's controlled, synthetic source, where 
 **Known limitations:**
 
 - Late-arriving records with an older `order_id` may be skipped.
-- Changes to existing orders are not applied when conflicts use `ON CONFLICT DO NOTHING`.
+- Changes to existing orders **are** applied for rows that pass the watermark
+  check (both `staging.sales_clean` and `warehouse.fact_sales` use
+  `ON CONFLICT ... DO UPDATE`). However, rows that do **not** pass the
+  watermark check are never read, so their updates are missed. This is
+  the core limitation.
 
 These limitations are documented design trade-offs, not guarantees of production-grade change capture.
 
