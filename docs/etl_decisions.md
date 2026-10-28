@@ -356,4 +356,47 @@ filters with `WHERE order_id > last_loaded_key`.
 
 **Scope decision**: For a 4-week learning project with a controlled
 synthetic source, this trade-off is documented explicitly.
+
+
+
+
+
+
+
+---
+
+## 19. Manual test for updates and late-arriving records
+
+The automated tests (`F10`) prove that re-running the ETL does not
+duplicate rows. However, two scenarios are **not** covered by CI
+because they require modifying `raw` data during the test:
+
+1. **Updating an existing order** (e.g., changing `quantity` for an
+   `order_id` already loaded).
+2. **Late-arriving record** (an `order_id` smaller than the current
+   watermark).
+
+### How to test manually (update scenario)
+
+```bash
+# 1. Pick an existing order
+psql -U postgres -d sales_dw -c \
+  "SELECT order_id, quantity FROM staging.sales_clean LIMIT 1;"
+
+# 2. Change it in raw
+psql -U postgres -d sales_dw -c \
+  "UPDATE raw.sales_raw SET quantity = 99 WHERE order_id = '<ORDER_ID>';"
+
+# 3. Reset the watermark so the row is re-read
+psql -U postgres -d sales_dw -c \
+  "UPDATE warehouse.etl_watermark SET last_loaded_key = NULL
+   WHERE pipeline_name = 'staging_sales';"
+
+# 4. Re-run ETL
+python scripts/etl/load_staging_sales.py
+
+# 5. Verify the update propagated
+psql -U postgres -d sales_dw -c \
+  "SELECT order_id, quantity FROM staging.sales_clean
+   WHERE order_id = '<ORDER_ID>';"
     

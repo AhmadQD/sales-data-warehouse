@@ -40,7 +40,8 @@ def main():
 
     try:
         with conn.cursor() as cur:
-            # Latest run from etl_runs
+                        # Latest NON-EMPTY run (skip runs with rows_read = 0,
+            # e.g. re-runs after the watermark reached the end)
             cur.execute("""
                 SELECT
                     rejected_negative_quantity,
@@ -55,6 +56,7 @@ def main():
                     rows_kept
                 FROM staging.etl_runs
                 WHERE pipeline_name = 'staging_sales'
+                  AND rows_read > 0
                 ORDER BY run_at DESC
                 LIMIT 1
             """)
