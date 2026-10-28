@@ -242,35 +242,49 @@ def clean_sales(conn):
 
 
 
-        # Insert with UPSERT
+            # Insert with UPSERT, using RETURNING (xmax = 0) to distinguish inserted vs updated
+        inserted_count = 0
+        updated_count = 0
+
         if to_insert:
-            execute_values(
-                cur,
-                """
-                INSERT INTO staging.sales_clean
-                    (order_id, order_date, branch_id, customer_id,
-                     product_id, quantity, unit_price, discount)
-                VALUES %s
-                ON CONFLICT (order_id) DO UPDATE SET
-                    order_date   = EXCLUDED.order_date,
-                    branch_id    = EXCLUDED.branch_id,
-                    customer_id  = EXCLUDED.customer_id,
-                    product_id   = EXCLUDED.product_id,
-                    quantity     = EXCLUDED.quantity,
-                    unit_price   = EXCLUDED.unit_price,
-                    discount     = EXCLUDED.discount
-                """,
-                to_insert,
-            )
-            order_ids = [r[0] for r in to_insert]
-            cur.execute(
-                "SELECT COUNT(*) FROM staging.sales_clean WHERE order_id = ANY(%s)",
-                (order_ids,),
-            )
-            present = cur.fetchone()[0]
-            stats["kept"] = present
+            # Deduplicate by order_id (keep last occurrence)
+            dedup = {}
+            for row in to_insert:
+                dedup[row[0]] = row
+            to_insert = list(dedup.values())
+
+            # execute_values cannot RETURNING per-row easily, so insert one by one
+            # (acceptable for 99k rows; ~2-3 seconds)
+            for row in to_insert:
+                cur.execute(
+                    """
+                    INSERT INTO staging.sales_clean
+                        (order_id, order_date, branch_id, customer_id,
+                         product_id, quantity, unit_price, discount)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (order_id) DO UPDATE SET
+                        order_date   = EXCLUDED.order_date,
+                        branch_id    = EXCLUDED.branch_id,
+                        customer_id  = EXCLUDED.customer_id,
+                        product_id   = EXCLUDED.product_id,
+                        quantity     = EXCLUDED.quantity,
+                        unit_price   = EXCLUDED.unit_price,
+                        discount     = EXCLUDED.discount
+                    RETURNING (xmax = 0) AS was_inserted
+                    """,
+                    row,
+                )
+                if cur.fetchone()[0]:
+                    inserted_count += 1
+                else:
+                    updated_count += 1
+
+            stats["kept"] = inserted_count + updated_count
         else:
             stats["kept"] = 0
+
+        stats["rows_inserted"] = inserted_count
+        stats["rows_updated"] = updated_count
 
         # Update watermark
         if max_order_id is not None:
@@ -279,12 +293,14 @@ def clean_sales(conn):
         else:
             stats["watermark_after"] = wm
 
-        # Update the run entry
+           # Update the run entry
         cur.execute(
             """
             UPDATE staging.etl_runs
             SET rows_read = %s,
                 rows_kept = %s,
+                rows_inserted = %s,
+                rows_updated = %s,
                 rejected_negative_quantity = %s,
                 rejected_bad_date = %s,
                 rejected_other = %s,
@@ -296,6 +312,7 @@ def clean_sales(conn):
             """,
             (
                 stats["read"], stats["kept"],
+                stats.get("rows_inserted", 0), stats.get("rows_updated", 0),
                 stats["rejected_negative_quantity"], stats["rejected_bad_date"],
                 stats["rejected_other"],
                 stats["normalized_branch_id"], stats["normalized_date"],
